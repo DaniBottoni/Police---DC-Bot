@@ -220,4 +220,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 // Login with bot token
-client.login('YOUR_BOT_TOKEN_HERE');
+client.login('MTQ4NjMwNjEzMzQyNDczODQwNA.GJVYd-.tLu52vRh1m6yE9hB-V3bYstxRr2Ro5FPneWIIU');
