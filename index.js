@@ -220,4 +220,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 // Login with bot token
-client.login('DISCORD_TOKEN');
+client.login(process.env.DISCORD_TOKEN);
