@@ -100,7 +100,7 @@ async function scheduleWarningRemoval(warningKey, guildId, userId, roleId, expir
                 }
             }
         } catch (error) {
-            console.error(`Failed to remove role: ${error}`);
+            console.error(`Failed to remove role, make sure the Police role is abouve the warning roles: ${error}`);
         }
         
         warningTimers.delete(warningKey);
