@@ -1,6 +1,7 @@
 const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 
 const client = new Client({
     intents: [
@@ -221,3 +222,14 @@ client.on('interactionCreate', async interaction => {
 
 // Login with bot token
 client.login(process.env.DISCORD_TOKEN);
+
+// Simple HTTP server to keep Render happy
+const PORT = process.env.PORT || 3000;
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Police bot is running!');
+});
+
+server.listen(PORT, () => {
+    console.log(`🌐 HTTP server listening on port ${PORT}`);
+});
