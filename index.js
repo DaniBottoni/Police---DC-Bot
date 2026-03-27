@@ -271,7 +271,7 @@ client.on('interactionCreate', async interaction => {
         } catch (error) {
             console.error(error);
             await interaction.reply({
-                content: `❌ Failed to assign warning. Make sure the bot has proper permissions.`,
+                content: `❌ Failed to assign warning. Make sure the bot has proper permissions and it's role is above warning roles.`,
                 ephemeral: true
             });
         }
