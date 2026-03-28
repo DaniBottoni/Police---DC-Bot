@@ -1,0 +1,16 @@
+{
+  "1377362403901051042": {
+    "levels": {
+      "1": {
+        "roleId": "1484288616946602034",
+        "roleName": "Warning I",
+        "duration": 20160
+      },
+      "2": {
+        "roleId": "1484288679621951658",
+        "roleName": "Warning II",
+        "duration": 87600
+      }
+    }
+  }
+}
