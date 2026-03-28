@@ -31,6 +31,79 @@ function saveConfigs() {
     fs.writeFileSync(configPath, JSON.stringify(guildConfigs, null, 2));
 }
 
+// Auto-save config to GitHub (requires GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO env vars)
+async function saveConfigToGitHub() {
+    const token = process.env.GITHUB_TOKEN;
+    const owner = process.env.GITHUB_OWNER;
+    const repo = process.env.GITHUB_REPO;
+    
+    // Skip if GitHub integration not configured
+    if (!token || !owner || !repo) {
+        console.log('⚠️ GitHub auto-save disabled (missing GITHUB_TOKEN, GITHUB_OWNER, or GITHUB_REPO)');
+        return false;
+    }
+    
+    try {
+        const configContent = fs.readFileSync(configPath, 'utf8');
+        const base64Content = Buffer.from(configContent).toString('base64');
+        
+        // Get current file SHA (required for updates)
+        const getResponse = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/config.json`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'User-Agent': 'Police-Discord-Bot'
+                }
+            }
+        );
+        
+        let sha = null;
+        if (getResponse.ok) {
+            const data = await getResponse.json();
+            sha = data.sha;
+        }
+        
+        // Update file on GitHub
+        const updateData = {
+            message: 'Auto-save: Update config.json from Discord bot',
+            content: base64Content,
+            branch: 'main' // Change to 'master' if your default branch is master
+        };
+        
+        if (sha) {
+            updateData.sha = sha;
+        }
+        
+        const updateResponse = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/config.json`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Police-Discord-Bot'
+                },
+                body: JSON.stringify(updateData)
+            }
+        );
+        
+        if (updateResponse.ok) {
+            console.log('✅ Config auto-saved to GitHub');
+            return true;
+        } else {
+            const errorData = await updateResponse.json();
+            console.error('❌ GitHub save failed:', errorData.message);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ GitHub auto-save error:', error.message);
+        return false;
+    }
+}
+
 // Save warnings to file
 function saveWarnings() {
     fs.writeFileSync(warningsPath, JSON.stringify(activeWarnings, null, 2));
@@ -153,14 +226,21 @@ async function scheduleWarningRemoval(warningKey, guildId, userId, roleId, expir
 
 // Keep Render alive by self-pinging every 14 minutes
 function keepAlive() {
-    const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
-    
     setInterval(() => {
-        http.get(url, (res) => {
-            console.log(`🏓 Keep-alive ping at ${new Date().toLocaleTimeString()} - Status: ${res.statusCode}`);
-        }).on('error', (err) => {
-            console.error('❌ Keep-alive ping failed:', err.message);
-        });
+        // Use the actual Render URL if available, otherwise use localhost
+        const url = process.env.RENDER_EXTERNAL_URL 
+            ? `${process.env.RENDER_EXTERNAL_URL}` 
+            : `http://localhost:${process.env.PORT || 3000}`;
+        
+        try {
+            http.get(url, (res) => {
+                console.log(`🏓 Keep-alive ping - Status: ${res.statusCode}`);
+            }).on('error', (err) => {
+                console.error('❌ Keep-alive ping failed:', err.message);
+            });
+        } catch (error) {
+            console.error('❌ Keep-alive error:', error.message);
+        }
     }, 14 * 60 * 1000); // 14 minutes
 }
 
@@ -257,6 +337,13 @@ client.on('interactionCreate', async interaction => {
         };
 
         saveConfigs();
+        
+        // Auto-save to GitHub (non-blocking)
+        saveConfigToGitHub().then(success => {
+            if (success) {
+                console.log('✅ Config synced to GitHub automatically');
+            }
+        });
 
         const embed = new EmbedBuilder()
             .setColor('#00ff00')
@@ -266,6 +353,7 @@ client.on('interactionCreate', async interaction => {
                 { name: 'Role', value: `${role}`, inline: true },
                 { name: 'Duration', value: `${duration} minutes`, inline: true }
             )
+            .setFooter({ text: 'Config auto-saved to GitHub ✓' })
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
