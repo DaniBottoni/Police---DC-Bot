@@ -151,6 +151,19 @@ async function scheduleWarningRemoval(warningKey, guildId, userId, roleId, expir
     warningTimers.set(warningKey, timeoutId);
 }
 
+// Keep Render alive by self-pinging every 14 minutes
+function keepAlive() {
+    const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+    
+    setInterval(() => {
+        http.get(url, (res) => {
+            console.log(`🏓 Keep-alive ping at ${new Date().toLocaleTimeString()} - Status: ${res.statusCode}`);
+        }).on('error', (err) => {
+            console.error('❌ Keep-alive ping failed:', err.message);
+        });
+    }, 14 * 60 * 1000); // 14 minutes
+}
+
 client.once('ready', () => {
     console.log(`✅ Police bot is online as ${client.user.tag}`);
     
@@ -166,6 +179,10 @@ client.once('ready', () => {
             warningData.channelId
         );
     }
+    
+    // Start keep-alive pings to prevent Render from spinning down
+    keepAlive();
+    console.log('🏓 Keep-alive system started (14-minute intervals)');
     
     // Register slash commands
     const commands = [
