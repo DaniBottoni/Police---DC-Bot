@@ -226,8 +226,7 @@ async function scheduleWarningRemoval(warningKey, guildId, userId, roleId, expir
 
 // Keep Render alive by self-pinging every 14 minutes
 function keepAlive() {
-    setInterval(() => {
-        // Use the actual Render URL if available, otherwise use localhost
+    const pingServer = () => {
         const url = process.env.RENDER_EXTERNAL_URL 
             ? `${process.env.RENDER_EXTERNAL_URL}` 
             : `http://localhost:${process.env.PORT || 3000}`;
@@ -241,7 +240,14 @@ function keepAlive() {
         } catch (error) {
             console.error('❌ Keep-alive error:', error.message);
         }
-    }, 14 * 60 * 1000); // 14 minutes
+    };
+    
+    // Ping immediately on startup to prevent initial spin-down
+    console.log('🏓 Sending initial keep-alive ping...');
+    setTimeout(pingServer, 5000); // 5 second delay to let server start
+    
+    // Then ping every 14 minutes
+    setInterval(pingServer, 14 * 60 * 1000);
 }
 
 client.once('ready', () => {
