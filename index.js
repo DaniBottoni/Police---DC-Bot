@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, Emb
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const https = require('https');
 
 const client = new Client({
     intents: [
@@ -37,6 +38,11 @@ async function saveConfigToGitHub() {
     const owner = process.env.GITHUB_OWNER;
     const repo = process.env.GITHUB_REPO;
     
+    console.log('📤 GitHub auto-save triggered...');
+    console.log(`   Token: ${token ? 'Set ✓' : 'Missing ✗'}`);
+    console.log(`   Owner: ${owner || 'Missing ✗'}`);
+    console.log(`   Repo: ${repo || 'Missing ✗'}`);
+    
     // Skip if GitHub integration not configured
     if (!token || !owner || !repo) {
         console.log('⚠️ GitHub auto-save disabled (missing GITHUB_TOKEN, GITHUB_OWNER, or GITHUB_REPO)');
@@ -46,6 +52,8 @@ async function saveConfigToGitHub() {
     try {
         const configContent = fs.readFileSync(configPath, 'utf8');
         const base64Content = Buffer.from(configContent).toString('base64');
+        
+        console.log('📡 Fetching current file from GitHub...');
         
         // Get current file SHA (required for updates)
         const getResponse = await fetch(
@@ -63,6 +71,9 @@ async function saveConfigToGitHub() {
         if (getResponse.ok) {
             const data = await getResponse.json();
             sha = data.sha;
+            console.log(`   Found existing file (SHA: ${sha.substring(0, 7)}...)`);
+        } else {
+            console.log('   File not found, will create new');
         }
         
         // Update file on GitHub
@@ -75,6 +86,8 @@ async function saveConfigToGitHub() {
         if (sha) {
             updateData.sha = sha;
         }
+        
+        console.log('📤 Pushing to GitHub...');
         
         const updateResponse = await fetch(
             `https://api.github.com/repos/${owner}/${repo}/contents/config.json`,
@@ -91,7 +104,7 @@ async function saveConfigToGitHub() {
         );
         
         if (updateResponse.ok) {
-            console.log('✅ Config auto-saved to GitHub');
+            console.log('✅ Config auto-saved to GitHub successfully!');
             return true;
         } else {
             const errorData = await updateResponse.json();
@@ -231,8 +244,11 @@ function keepAlive() {
             ? `${process.env.RENDER_EXTERNAL_URL}` 
             : `http://localhost:${process.env.PORT || 3000}`;
         
+        // Use https module for https:// URLs, http for http://
+        const protocol = url.startsWith('https://') ? https : http;
+        
         try {
-            http.get(url, (res) => {
+            protocol.get(url, (res) => {
                 console.log(`🏓 Keep-alive ping - Status: ${res.statusCode}`);
             }).on('error', (err) => {
                 console.error('❌ Keep-alive ping failed:', err.message);
@@ -345,11 +361,7 @@ client.on('interactionCreate', async interaction => {
         saveConfigs();
         
         // Auto-save to GitHub (non-blocking)
-        saveConfigToGitHub().then(success => {
-            if (success) {
-                console.log('✅ Config synced to GitHub automatically');
-            }
-        });
+        saveConfigToGitHub();
 
         const embed = new EmbedBuilder()
             .setColor('#00ff00')
@@ -359,7 +371,7 @@ client.on('interactionCreate', async interaction => {
                 { name: 'Role', value: `${role}`, inline: true },
                 { name: 'Duration', value: `${duration} minutes`, inline: true }
             )
-            .setFooter({ text: 'Config auto-saved to GitHub ✓' })
+            .setFooter({ text: 'Config saved locally (check logs for GitHub sync)' })
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
