@@ -426,7 +426,7 @@ client.once('ready', () => {
                     .setRequired(true))
             .addStringOption(option =>
                 option.setName('duration')
-                    .setDescription('Duration: "5" (5min), "30:0" (30min), "1:30:0" (1h 30m), "2:1:30:0" (2d 1h 30m)')
+                    .setDescription('day:hour:min:sec')
                     .setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
