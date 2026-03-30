@@ -4,7 +4,8 @@
       "1": {
         "roleId": "1484288616946602034",
         "roleName": "Warning I",
-        "duration": 20160
+        "durationMs": 1209600000,
+        "durationDisplay": "14d"
       },
       "2": {
         "roleId": "1484288679621951658",
