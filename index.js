@@ -117,9 +117,86 @@ async function saveConfigToGitHub() {
     }
 }
 
+// Auto-save warnings to GitHub (same env vars as config)
+async function saveWarningsToGitHub() {
+    const token = process.env.GITHUB_TOKEN;
+    const owner = process.env.GITHUB_OWNER;
+    const repo = process.env.GITHUB_REPO;
+    
+    // Skip if GitHub integration not configured
+    if (!token || !owner || !repo) {
+        return false;
+    }
+    
+    try {
+        const warningsContent = fs.readFileSync(warningsPath, 'utf8');
+        const base64Content = Buffer.from(warningsContent).toString('base64');
+        
+        // Get current file SHA (required for updates)
+        const getResponse = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/warnings.json`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'User-Agent': 'Police-Discord-Bot'
+                }
+            }
+        );
+        
+        let sha = null;
+        if (getResponse.ok) {
+            const data = await getResponse.json();
+            sha = data.sha;
+        }
+        
+        // Update file on GitHub
+        const updateData = {
+            message: 'Auto-save: Update warnings.json from Discord bot',
+            content: base64Content,
+            branch: 'main'
+        };
+        
+        if (sha) {
+            updateData.sha = sha;
+        }
+        
+        const updateResponse = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/warnings.json`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Police-Discord-Bot'
+                },
+                body: JSON.stringify(updateData)
+            }
+        );
+        
+        if (updateResponse.ok) {
+            console.log('💾 Warnings auto-saved to GitHub');
+            return true;
+        } else {
+            const errorData = await updateResponse.json();
+            console.error('❌ Warning save failed:', errorData.message);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Warning GitHub save error:', error.message);
+        return false;
+    }
+}
+
 // Save warnings to file
 function saveWarnings() {
     fs.writeFileSync(warningsPath, JSON.stringify(activeWarnings, null, 2));
+    
+    // Also save to GitHub (non-blocking)
+    saveWarningsToGitHub().catch(err => {
+        console.error('Warning GitHub save failed silently:', err.message);
+    });
 }
 
 // Parse duration string (supports multiple formats)
