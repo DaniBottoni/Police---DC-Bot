@@ -10,7 +10,8 @@
       "2": {
         "roleId": "1484288679621951658",
         "roleName": "Warning II",
-        "duration": 87600
+        "durationMs": 5184000000,
+        "durationDisplay": "60d"
       }
     }
   },
