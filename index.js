@@ -200,8 +200,13 @@ function saveWarnings() {
 }
 
 // Parse duration string (supports multiple formats)
-// Examples: "5" (5 min), "30:0" (30 min), "1:30:0" (1hr 30min), "2:1:30:0" (2d 1hr 30min)
+// Examples: "5" (5 min), "30:0" (30 min), "1:30:0" (1hr 30min), "2:1:30:0" (2d 1hr 30min), "forever" (permanent)
 function parseDuration(durationStr) {
+    // Check for "forever" option
+    if (durationStr.toLowerCase() === 'forever') {
+        return { days: 0, hours: 0, minutes: 0, seconds: 0, totalMs: null, isForever: true };
+    }
+    
     const parts = durationStr.split(':').map(p => parseInt(p.trim()));
     
     if (parts.some(isNaN)) {
@@ -234,11 +239,15 @@ function parseDuration(durationStr) {
                    (minutes * 60 * 1000) +
                    (seconds * 1000);
     
-    return { days, hours, minutes, seconds, totalMs };
+    return { days, hours, minutes, seconds, totalMs, isForever: false };
 }
 
 // Format duration for display
-function formatDuration(days, hours, minutes, seconds) {
+function formatDuration(days, hours, minutes, seconds, isForever = false) {
+    if (isForever) {
+        return 'Forever';
+    }
+    
     const parts = [];
     if (days > 0) parts.push(`${days}d`);
     if (hours > 0) parts.push(`${hours}h`);
@@ -426,7 +435,7 @@ client.once('ready', () => {
                     .setRequired(true))
             .addStringOption(option =>
                 option.setName('duration')
-                    .setDescription('day:hour:min:sec')
+                    .setDescription('day:hour:min:sec or "forever" for permanent warnings')
                     .setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
@@ -451,6 +460,19 @@ client.once('ready', () => {
             .setName('viewconfig')
             .setDescription('View current warning configuration')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        
+        new SlashCommandBuilder()
+            .setName('unwarn')
+            .setDescription('Manually remove a warning role from a user')
+            .addUserOption(option =>
+                option.setName('user')
+                    .setDescription('User to remove warning from')
+                    .setRequired(true))
+            .addIntegerOption(option =>
+                option.setName('level')
+                    .setDescription('Warning level to remove')
+                    .setRequired(true))
+            .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
         
         new SlashCommandBuilder()
             .setName('exportconfig')
@@ -482,7 +504,7 @@ client.on('interactionCreate', async interaction => {
         
         if (!duration) {
             return interaction.reply({
-                content: '❌ Invalid duration format. Use:\n• `5` (5 minutes)\n• `30:0` (30 minutes)\n• `1:30:0` (1 hour 30 minutes)\n• `2:1:30:0` (2 days 1 hour 30 minutes)',
+                content: '❌ Invalid duration format. Use:\n• `5` (5 minutes)\n• `30:0` (30 minutes)\n• `1:30:0` (1 hour 30 minutes)\n• `2:1:30:0` (2 days 1 hour 30 minutes)\n• `forever` (permanent warning)',
                 ephemeral: true
             });
         }
@@ -491,7 +513,8 @@ client.on('interactionCreate', async interaction => {
             roleId: role.id,
             roleName: role.name,
             durationMs: duration.totalMs,
-            durationDisplay: formatDuration(duration.days, duration.hours, duration.minutes, duration.seconds)
+            isForever: duration.isForever,
+            durationDisplay: formatDuration(duration.days, duration.hours, duration.minutes, duration.seconds, duration.isForever)
         };
 
         saveConfigs();
@@ -505,7 +528,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 { name: 'Level', value: `${level}`, inline: true },
                 { name: 'Role', value: `${role}`, inline: true },
-                { name: 'Duration', value: formatDuration(duration.days, duration.hours, duration.minutes, duration.seconds), inline: true }
+                { name: 'Duration', value: formatDuration(duration.days, duration.hours, duration.minutes, duration.seconds, duration.isForever), inline: true }
             )
             .setFooter({ text: 'Config saved locally (check logs for GitHub sync)' })
             .setTimestamp();
@@ -572,21 +595,26 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.reply({ embeds: [embed] });
 
-            // Schedule role removal with persistent storage
-            const warningKey = `${guildId}-${user.id}-${level}-${Date.now()}`;
-            const expiresAt = Date.now() + config.durationMs;
-            
-            activeWarnings[warningKey] = {
-                guildId: guildId,
-                userId: user.id,
-                roleId: role.id,
-                level: level,
-                expiresAt: expiresAt,
-                channelId: interaction.channel.id
-            };
-            
-            saveWarnings();
-            scheduleWarningRemoval(warningKey, guildId, user.id, role.id, expiresAt, interaction.channel.id);
+            // Only schedule removal if not a forever warning
+            if (!config.isForever) {
+                // Schedule role removal with persistent storage
+                const warningKey = `${guildId}-${user.id}-${level}-${Date.now()}`;
+                const expiresAt = Date.now() + config.durationMs;
+                
+                activeWarnings[warningKey] = {
+                    guildId: guildId,
+                    userId: user.id,
+                    roleId: role.id,
+                    level: level,
+                    expiresAt: expiresAt,
+                    channelId: interaction.channel.id
+                };
+                
+                saveWarnings();
+                scheduleWarningRemoval(warningKey, guildId, user.id, role.id, expiresAt, interaction.channel.id);
+            } else {
+                console.log(`⏰ Warning issued to ${user.tag} with permanent duration (no auto-removal)`);
+            }
 
         } catch (error) {
             console.error(error);
@@ -622,6 +650,82 @@ client.on('interactionCreate', async interaction => {
         }
 
         await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    else if (commandName === 'unwarn') {
+        const user = interaction.options.getUser('user');
+        const member = interaction.guild.members.cache.get(user.id);
+        const level = interaction.options.getInteger('level');
+
+        // Check if level is configured
+        if (!guildConfigs[guildId].levels[level]) {
+            return interaction.reply({
+                content: `❌ Warning level ${level} is not configured.`,
+                ephemeral: true
+            });
+        }
+
+        const config = guildConfigs[guildId].levels[level];
+        const role = interaction.guild.roles.cache.get(config.roleId);
+
+        if (!role) {
+            return interaction.reply({
+                content: `❌ Configured role not found.`,
+                ephemeral: true
+            });
+        }
+
+        // Check if user has the role
+        if (!member.roles.cache.has(role.id)) {
+            return interaction.reply({
+                content: `❌ ${user} doesn't have the ${role} role.`,
+                ephemeral: true
+            });
+        }
+
+        try {
+            // Remove role from user
+            await member.roles.remove(role);
+
+            // Remove from active warnings if exists
+            const warningKeys = Object.keys(activeWarnings).filter(key => {
+                const warning = activeWarnings[key];
+                return warning.userId === user.id && warning.guildId === guildId && warning.level === level;
+            });
+
+            warningKeys.forEach(key => {
+                // Clear timer if exists
+                if (warningTimers.has(key)) {
+                    clearTimeout(warningTimers.get(key));
+                    warningTimers.delete(key);
+                }
+                delete activeWarnings[key];
+            });
+
+            if (warningKeys.length > 0) {
+                saveWarnings();
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor('#00ff00')
+                .setTitle('✅ Warning Removed')
+                .addFields(
+                    { name: 'User', value: `${user}`, inline: true },
+                    { name: 'Level', value: `${level}`, inline: true },
+                    { name: 'Role', value: `${role}`, inline: true },
+                    { name: 'Removed by', value: `${interaction.user}`, inline: false }
+                )
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed] });
+
+        } catch (error) {
+            console.error(error);
+            await interaction.reply({
+                content: `❌ Failed to remove warning. Make sure the bot has proper permissions.`,
+                ephemeral: true
+            });
+        }
     }
 
     else if (commandName === 'exportconfig') {
