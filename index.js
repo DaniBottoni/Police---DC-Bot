@@ -122,6 +122,54 @@ function saveWarnings() {
     fs.writeFileSync(warningsPath, JSON.stringify(activeWarnings, null, 2));
 }
 
+// Parse duration string (supports multiple formats)
+// Examples: "5" (5 min), "30:0" (30 min), "1:30:0" (1hr 30min), "2:1:30:0" (2d 1hr 30min)
+function parseDuration(durationStr) {
+    const parts = durationStr.split(':').map(p => parseInt(p.trim()));
+    
+    if (parts.some(isNaN)) {
+        return null; // Invalid input
+    }
+    
+    let days = 0, hours = 0, minutes = 0, seconds = 0;
+    
+    if (parts.length === 1) {
+        minutes = parts[0]; // "5" = 5 minutes (backward compatible)
+    } else if (parts.length === 2) {
+        minutes = parts[0];
+        seconds = parts[1]; // "5:30" = 5 minutes 30 seconds
+    } else if (parts.length === 3) {
+        hours = parts[0];
+        minutes = parts[1];
+        seconds = parts[2]; // "1:30:15" = 1 hour 30 minutes 15 seconds
+    } else if (parts.length === 4) {
+        days = parts[0];
+        hours = parts[1];
+        minutes = parts[2];
+        seconds = parts[3]; // "2:1:30:0" = 2 days 1 hour 30 minutes
+    } else {
+        return null; // Too many parts
+    }
+    
+    // Convert to milliseconds
+    const totalMs = (days * 24 * 60 * 60 * 1000) +
+                   (hours * 60 * 60 * 1000) +
+                   (minutes * 60 * 1000) +
+                   (seconds * 1000);
+    
+    return { days, hours, minutes, seconds, totalMs };
+}
+
+// Format duration for display
+function formatDuration(days, hours, minutes, seconds) {
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0) parts.push(`${seconds}s`);
+    return parts.length > 0 ? parts.join(' ') : '0s';
+}
+
 // Active warning timers (in-memory, not persisted)
 const warningTimers = new Map();
 
@@ -299,9 +347,9 @@ client.once('ready', () => {
                 option.setName('role')
                     .setDescription('Role to assign for this warning level')
                     .setRequired(true))
-            .addIntegerOption(option =>
+            .addStringOption(option =>
                 option.setName('duration')
-                    .setDescription('Duration in minutes before role is removed')
+                    .setDescription('Duration: "5" (5min), "30:0" (30min), "1:30:0" (1h 30m), "2:1:30:0" (2d 1h 30m)')
                     .setRequired(true))
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
@@ -350,12 +398,23 @@ client.on('interactionCreate', async interaction => {
     if (commandName === 'config') {
         const level = interaction.options.getInteger('level');
         const role = interaction.options.getRole('role');
-        const duration = interaction.options.getInteger('duration');
+        const durationStr = interaction.options.getString('duration');
+        
+        // Parse duration
+        const duration = parseDuration(durationStr);
+        
+        if (!duration) {
+            return interaction.reply({
+                content: '❌ Invalid duration format. Use:\n• `5` (5 minutes)\n• `30:0` (30 minutes)\n• `1:30:0` (1 hour 30 minutes)\n• `2:1:30:0` (2 days 1 hour 30 minutes)',
+                ephemeral: true
+            });
+        }
 
         guildConfigs[guildId].levels[level] = {
             roleId: role.id,
             roleName: role.name,
-            duration: duration
+            durationMs: duration.totalMs,
+            durationDisplay: formatDuration(duration.days, duration.hours, duration.minutes, duration.seconds)
         };
 
         saveConfigs();
@@ -369,7 +428,7 @@ client.on('interactionCreate', async interaction => {
             .addFields(
                 { name: 'Level', value: `${level}`, inline: true },
                 { name: 'Role', value: `${role}`, inline: true },
-                { name: 'Duration', value: `${duration} minutes`, inline: true }
+                { name: 'Duration', value: formatDuration(duration.days, duration.hours, duration.minutes, duration.seconds), inline: true }
             )
             .setFooter({ text: 'Config saved locally (check logs for GitHub sync)' })
             .setTimestamp();
@@ -428,7 +487,7 @@ client.on('interactionCreate', async interaction => {
                     { name: 'User', value: `${user}`, inline: true },
                     { name: 'Level', value: `${level}`, inline: true },
                     { name: 'Role', value: `${role}`, inline: true },
-                    { name: 'Duration', value: `${config.duration} minutes`, inline: true },
+                    { name: 'Duration', value: config.durationDisplay || 'Unknown', inline: true },
                     { name: 'Reason', value: reason, inline: false },
                     { name: 'Issued by', value: `${interaction.user}`, inline: false }
                 )
@@ -438,7 +497,7 @@ client.on('interactionCreate', async interaction => {
 
             // Schedule role removal with persistent storage
             const warningKey = `${guildId}-${user.id}-${level}-${Date.now()}`;
-            const expiresAt = Date.now() + (config.duration * 60 * 1000);
+            const expiresAt = Date.now() + config.durationMs;
             
             activeWarnings[warningKey] = {
                 guildId: guildId,
@@ -480,7 +539,7 @@ client.on('interactionCreate', async interaction => {
         for (const [level, data] of Object.entries(config.levels)) {
             embed.addFields({
                 name: `Level ${level}`,
-                value: `Role: <@&${data.roleId}>\nDuration: ${data.duration} minutes`,
+                value: `Role: <@&${data.roleId}>\nDuration: ${data.durationDisplay || `${data.duration} minutes (old format)`}`,
                 inline: true
             });
         }
