@@ -12,6 +12,13 @@
         "roleName": "Warning II",
         "durationMs": 5184000000,
         "durationDisplay": "60d"
+      },
+      "21471888888": {
+        "roleId": "1475470949561139302",
+        "roleName": "Barbarian Brawler",
+        "durationMs": 8916039000,
+        "isForever": false,
+        "durationDisplay": "99d 99h 99m 99s"
       }
     }
   },
