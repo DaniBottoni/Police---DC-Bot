@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, RoleSelectMenuBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -197,6 +197,50 @@ function saveWarnings() {
     saveWarningsToGitHub().catch(err => {
         console.error('Warning GitHub save failed silently:', err.message);
     });
+}
+
+// Show access control configuration UI
+async function showAccessControlConfig(target, guildId) {
+    const embed = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setTitle('🔒 Access Control Configuration')
+        .setDescription('Select which role should have access to moderation commands:\n\n**Commands affected:**\n• `/warn` - Give warnings to users\n• `/unwarn` - Remove warnings from users\n• `/config` - Configure warning levels\n• `/viewconfig` - View warning configuration\n• `/accessconfig` - Change access control settings\n\n**Note:** Server administrators always have access to all commands.')
+        .setFooter({ text: 'Select a role from the menu below' });
+
+    const selectMenu = new RoleSelectMenuBuilder()
+        .setCustomId(`access_role_${guildId}`)
+        .setPlaceholder('Select a role for command access')
+        .setMinValues(1)
+        .setMaxValues(1);
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    await target.reply({
+        embeds: [embed],
+        components: [row],
+        ephemeral: true
+    });
+}
+
+// Check if user has permission to use restricted commands
+function hasCommandPermission(interaction, guildId) {
+    const member = interaction.member;
+    
+    // Administrators always have access
+    if (member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return true;
+    }
+    
+    // Check if access role is configured for this guild
+    const accessRoleId = guildConfigs[guildId]?.accessRoleId;
+    
+    // If no access role is configured, only allow administrators
+    if (!accessRoleId) {
+        return false;
+    }
+    
+    // Check if user has the access role
+    return member.roles.cache.has(accessRoleId);
 }
 
 // Parse duration string (supports multiple formats)
@@ -477,6 +521,11 @@ client.once('ready', () => {
         new SlashCommandBuilder()
             .setName('exportconfig')
             .setDescription('Download config.json file to upload to GitHub')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        
+        new SlashCommandBuilder()
+            .setName('accessconfig')
+            .setDescription('Configure which role can access moderation commands')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     ].map(command => command.toJSON());
 
@@ -484,7 +533,95 @@ client.once('ready', () => {
     client.application.commands.set(commands);
 });
 
+// Handle bot joining a new server
+client.on('guildCreate', async guild => {
+    console.log(`🎉 Bot joined new server: ${guild.name} (${guild.id})`);
+    
+    // Initialize guild config
+    if (!guildConfigs[guild.id]) {
+        guildConfigs[guild.id] = { levels: {} };
+        saveConfigs();
+    }
+    
+    try {
+        // Try to find who invited the bot using audit logs
+        const auditLogs = await guild.fetchAuditLogs({
+            type: 28, // INTEGRATION_CREATE / BOT_ADD
+            limit: 5
+        });
+        
+        // Find the most recent bot add entry for this bot
+        const botAddEntry = auditLogs.entries.find(entry => 
+            entry.target?.id === client.user.id &&
+            Date.now() - entry.createdTimestamp < 60000 // Within last minute
+        );
+        
+        if (botAddEntry && botAddEntry.executor) {
+            const inviter = botAddEntry.executor;
+            console.log(`   Invited by: ${inviter.tag} (${inviter.id})`);
+            
+            // Send DM to the person who invited the bot
+            try {
+                await showAccessControlConfig(inviter, guild.id);
+                console.log(`   ✅ Sent access config DM to ${inviter.tag}`);
+            } catch (dmError) {
+                console.log(`   ⚠️ Could not DM ${inviter.tag}, they may have DMs disabled`);
+                
+                // Try to send in system channel as fallback
+                if (guild.systemChannel) {
+                    try {
+                        const embed = new EmbedBuilder()
+                            .setColor('#5865F2')
+                            .setTitle('👋 Thanks for adding Police Bot!')
+                            .setDescription(`${inviter}, please run \`/accessconfig\` to set up command permissions.`)
+                            .setFooter({ text: 'This bot uses role-based access control for moderation commands' });
+                        
+                        await guild.systemChannel.send({ embeds: [embed] });
+                        console.log(`   ✅ Sent access config reminder in system channel`);
+                    } catch (channelError) {
+                        console.log(`   ⚠️ Could not send in system channel either`);
+                    }
+                }
+            }
+        } else {
+            console.log(`   ⚠️ Could not determine who invited the bot`);
+        }
+    } catch (error) {
+        console.error(`   ❌ Error in guildCreate handler:`, error.message);
+    }
+});
+
 client.on('interactionCreate', async interaction => {
+    // Handle role select menu interactions (for access control configuration)
+    if (interaction.isRoleSelectMenu()) {
+        if (interaction.customId.startsWith('access_role_')) {
+            const guildId = interaction.customId.replace('access_role_', '');
+            const selectedRole = interaction.roles.first();
+            
+            // Save the access role to config
+            if (!guildConfigs[guildId]) {
+                guildConfigs[guildId] = { levels: {} };
+            }
+            
+            guildConfigs[guildId].accessRoleId = selectedRole.id;
+            saveConfigs();
+            
+            // Auto-save to GitHub
+            await saveConfigToGitHub();
+            
+            const embed = new EmbedBuilder()
+                .setColor('#00ff00')
+                .setTitle('✅ Access Control Updated')
+                .setDescription(`Members with the ${selectedRole} role can now use moderation commands.\n\n**Affected commands:**\n• \`/warn\`\n• \`/unwarn\`\n• \`/config\`\n• \`/viewconfig\`\n• \`/accessconfig\`\n\n*Server administrators always have access.*`)
+                .setTimestamp();
+            
+            await interaction.update({ embeds: [embed], components: [] });
+            console.log(`🔒 Access role set to ${selectedRole.name} in ${interaction.guild.name}`);
+        }
+        return;
+    }
+    
+    // Handle slash commands
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, guildId } = interaction;
@@ -493,8 +630,28 @@ client.on('interactionCreate', async interaction => {
     if (!guildConfigs[guildId]) {
         guildConfigs[guildId] = { levels: {} };
     }
+    
+    // Commands that require special access control
+    const restrictedCommands = ['config', 'warn', 'unwarn', 'viewconfig', 'accessconfig'];
+    
+    // Check permissions for restricted commands
+    if (restrictedCommands.includes(commandName)) {
+        if (!hasCommandPermission(interaction, guildId)) {
+            const accessRole = guildConfigs[guildId]?.accessRoleId;
+            const accessRoleDisplay = accessRole ? `<@&${accessRole}>` : 'not configured';
+            
+            return interaction.reply({
+                content: `❌ You don't have permission to use this command.\n\n**Required:** Administrator permission OR ${accessRoleDisplay}\n\nAsk a server administrator to run \`/accessconfig\` to set up command access.`,
+                ephemeral: true
+            });
+        }
+    }
 
-    if (commandName === 'config') {
+    if (commandName === 'accessconfig') {
+        await showAccessControlConfig(interaction, guildId);
+    }
+
+    else if (commandName === 'config') {
         const level = interaction.options.getInteger('level');
         const role = interaction.options.getRole('role');
         const durationStr = interaction.options.getString('duration');
