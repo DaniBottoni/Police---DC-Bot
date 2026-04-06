@@ -480,8 +480,7 @@ client.once('ready', () => {
             .addStringOption(option =>
                 option.setName('duration')
                     .setDescription('day:hour:min:sec or "forever" for permanent warnings')
-                    .setRequired(true))
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+                    .setRequired(true)),
         
         new SlashCommandBuilder()
             .setName('warn')
@@ -497,13 +496,11 @@ client.once('ready', () => {
             .addStringOption(option =>
                 option.setName('reason')
                     .setDescription('Reason for the warning')
-                    .setRequired(false))
-            .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+                    .setRequired(false)),
         
         new SlashCommandBuilder()
             .setName('viewconfig')
-            .setDescription('View current warning configuration')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+            .setDescription('View current warning configuration'),
         
         new SlashCommandBuilder()
             .setName('unwarn')
@@ -515,8 +512,7 @@ client.once('ready', () => {
             .addIntegerOption(option =>
                 option.setName('level')
                     .setDescription('Warning level to remove')
-                    .setRequired(true))
-            .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+                    .setRequired(true)),
         
         new SlashCommandBuilder()
             .setName('exportconfig')
@@ -525,8 +521,7 @@ client.once('ready', () => {
         
         new SlashCommandBuilder()
             .setName('accessconfig')
-            .setDescription('Configure which role can access moderation commands')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+            .setDescription('Configure which role can access moderation commands'),
         
         new SlashCommandBuilder()
             .setName('timeleft')
