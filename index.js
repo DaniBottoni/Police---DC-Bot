@@ -199,8 +199,8 @@ function saveWarnings() {
     });
 }
 
-// Show access control configuration UI
-async function showAccessControlConfig(target, guildId) {
+// Show access control configuration UI (for /accessconfig command)
+async function showAccessControlConfig(interaction, guildId) {
     const embed = new EmbedBuilder()
         .setColor('#5865F2')
         .setTitle('🔒 Access Control Configuration')
@@ -215,21 +215,11 @@ async function showAccessControlConfig(target, guildId) {
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-    // Check if target is an interaction or a user
-    if (target.reply) {
-        // It's an interaction
-        await target.reply({
-            embeds: [embed],
-            components: [row],
-            ephemeral: true
-        });
-    } else {
-        // It's a user object, send as DM
-        await target.send({
-            embeds: [embed],
-            components: [row]
-        });
-    }
+    await interaction.reply({
+        embeds: [embed],
+        components: [row],
+        ephemeral: true
+    });
 }
 
 // Check if user has permission to use restricted commands
@@ -567,57 +557,36 @@ client.on('guildCreate', async guild => {
             Date.now() - entry.createdTimestamp < 60000 // Within last minute
         );
         
+        let inviterId = null;
         if (botAddEntry && botAddEntry.executor) {
             const inviter = botAddEntry.executor;
+            inviterId = inviter.id;
             console.log(`   👤 Invited by: ${inviter.tag} (${inviter.id})`);
-            
-            // Send DM to the person who invited the bot
-            try {
-                console.log(`   📤 Attempting to send DM to ${inviter.tag}...`);
-                await showAccessControlConfig(inviter, guild.id);
-                console.log(`   ✅ Sent access config DM to ${inviter.tag}`);
-            } catch (dmError) {
-                console.log(`   ⚠️ Could not DM ${inviter.tag}: ${dmError.message}`);
-                console.log(`   Reason: They may have DMs disabled or blocked the bot`);
-                
-                // Try to send in system channel as fallback
-                if (guild.systemChannel) {
-                    try {
-                        console.log(`   📤 Attempting to send in system channel...`);
-                        const embed = new EmbedBuilder()
-                            .setColor('#5865F2')
-                            .setTitle('👋 Thanks for adding Police Bot!')
-                            .setDescription(`<@${inviter.id}>, please run \`/accessconfig\` to set up command permissions.`)
-                            .setFooter({ text: 'This bot uses role-based access control for moderation commands' });
-                        
-                        await guild.systemChannel.send({ embeds: [embed] });
-                        console.log(`   ✅ Sent access config reminder in system channel`);
-                    } catch (channelError) {
-                        console.log(`   ⚠️ Could not send in system channel: ${channelError.message}`);
-                    }
-                } else {
-                    console.log(`   ⚠️ No system channel available for fallback message`);
-                }
-            }
         } else {
             console.log(`   ⚠️ Could not determine who invited the bot`);
-            console.log(`   Audit log may not be available yet or bot lacks permission`);
-            
-            // Try to send a generic message in system channel
-            if (guild.systemChannel) {
-                try {
-                    const embed = new EmbedBuilder()
-                        .setColor('#5865F2')
-                        .setTitle('👋 Thanks for adding Police Bot!')
-                        .setDescription('An administrator should run `/accessconfig` to set up command permissions.')
-                        .setFooter({ text: 'This bot uses role-based access control for moderation commands' });
-                    
-                    await guild.systemChannel.send({ embeds: [embed] });
-                    console.log(`   ✅ Sent generic setup reminder in system channel`);
-                } catch (channelError) {
-                    console.log(`   ⚠️ Could not send generic message: ${channelError.message}`);
-                }
+        }
+        
+        // Send setup message in system channel
+        if (guild.systemChannel) {
+            try {
+                console.log(`   📤 Sending setup message in system channel...`);
+                const embed = new EmbedBuilder()
+                    .setColor('#5865F2')
+                    .setTitle('👋 Thanks for adding Police Bot!')
+                    .setDescription(
+                        inviterId 
+                            ? `<@${inviterId}>, please run \`/accessconfig\` to set up command permissions.\n\n**Quick Start:**\n1. Run \`/accessconfig\` to choose which role can use moderation commands\n2. Run \`/config\` to set up warning levels\n3. Start using \`/warn\` to moderate your server!`
+                            : `An administrator should run \`/accessconfig\` to set up command permissions.\n\n**Quick Start:**\n1. Run \`/accessconfig\` to choose which role can use moderation commands\n2. Run \`/config\` to set up warning levels\n3. Start using \`/warn\` to moderate your server!`
+                    )
+                    .setFooter({ text: 'Use /accessconfig to configure role-based access control' });
+                
+                await guild.systemChannel.send({ embeds: [embed] });
+                console.log(`   ✅ Sent setup message in system channel`);
+            } catch (channelError) {
+                console.log(`   ⚠️ Could not send in system channel: ${channelError.message}`);
             }
+        } else {
+            console.log(`   ⚠️ No system channel available - admin should run /accessconfig manually`);
         }
     } catch (error) {
         console.error(`   ❌ Error in guildCreate handler:`, error);
@@ -770,6 +739,27 @@ client.on('interactionCreate', async interaction => {
         try {
             // Add role to user
             await member.roles.add(role);
+            
+            // Send DM to warned user
+            try {
+                const dmEmbed = new EmbedBuilder()
+                    .setColor('#ff0000')
+                    .setTitle('⚠️ You Received a Warning')
+                    .setDescription(`You have been warned in **${interaction.guild.name}**.`)
+                    .addFields(
+                        { name: 'Warning Level', value: `${level}`, inline: true },
+                        { name: 'Duration', value: config.durationDisplay || 'Unknown', inline: true },
+                        { name: 'Reason', value: reason, inline: false }
+                    )
+                    .setFooter({ text: `Use /timeleft in ${interaction.guild.name} to check when this warning expires` })
+                    .setTimestamp();
+                
+                await user.send({ embeds: [dmEmbed] });
+                console.log(`✅ Sent warning DM to ${user.tag}`);
+            } catch (dmError) {
+                console.log(`⚠️ Could not DM ${user.tag}: ${dmError.message}`);
+                // Continue even if DM fails - warning is still issued
+            }
 
             const embed = new EmbedBuilder()
                 .setColor('#ff0000')
