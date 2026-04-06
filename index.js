@@ -526,7 +526,11 @@ client.once('ready', () => {
         new SlashCommandBuilder()
             .setName('accessconfig')
             .setDescription('Configure which role can access moderation commands')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        
+        new SlashCommandBuilder()
+            .setName('timeleft')
+            .setDescription('Check how much time is left on your warnings')
     ].map(command => command.toJSON());
 
     // Register commands globally
@@ -905,6 +909,76 @@ client.on('interactionCreate', async interaction => {
             }],
             ephemeral: true
         });
+    }
+    
+    else if (commandName === 'timeleft') {
+        const userId = interaction.user.id;
+        
+        // Find all warnings for this user in this guild
+        const userWarnings = Object.entries(activeWarnings).filter(([key, warning]) => 
+            warning.guildId === guildId && warning.userId === userId
+        );
+        
+        if (userWarnings.length === 0) {
+            return interaction.reply({
+                content: '✅ You have no active warnings!',
+                ephemeral: true
+            });
+        }
+        
+        // Build embed with all warnings
+        const embed = new EmbedBuilder()
+            .setColor('#FFA500')
+            .setTitle('⏰ Your Active Warnings')
+            .setDescription(`You currently have ${userWarnings.length} active warning${userWarnings.length > 1 ? 's' : ''}:`)
+            .setTimestamp();
+        
+        for (const [warningKey, warning] of userWarnings) {
+            const config = guildConfigs[guildId]?.levels[warning.level];
+            const roleName = config?.roleName || 'Unknown Role';
+            
+            // Check if this is a forever warning
+            if (config?.isForever) {
+                embed.addFields({
+                    name: `Level ${warning.level} - ${roleName}`,
+                    value: '⏳ **Duration:** Forever\n🔒 **Status:** Permanent (use `/unwarn` to remove)',
+                    inline: false
+                });
+            } else {
+                // Calculate time remaining
+                const now = Date.now();
+                const timeLeft = warning.expiresAt - now;
+                
+                if (timeLeft <= 0) {
+                    embed.addFields({
+                        name: `Level ${warning.level} - ${roleName}`,
+                        value: '⏳ **Time Left:** Expired (will be removed shortly)',
+                        inline: false
+                    });
+                } else {
+                    // Convert to days, hours, minutes, seconds
+                    const totalSeconds = Math.floor(timeLeft / 1000);
+                    const days = Math.floor(totalSeconds / 86400);
+                    const hours = Math.floor((totalSeconds % 86400) / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    const seconds = totalSeconds % 60;
+                    
+                    const timeDisplay = formatDuration(days, hours, minutes, seconds, false);
+                    const expiryDate = new Date(warning.expiresAt);
+                    const expiryTimestamp = `<t:${Math.floor(warning.expiresAt / 1000)}:F>`;
+                    
+                    embed.addFields({
+                        name: `Level ${warning.level} - ${roleName}`,
+                        value: `⏳ **Time Left:** ${timeDisplay}\n📅 **Expires:** ${expiryTimestamp}`,
+                        inline: false
+                    });
+                }
+            }
+        }
+        
+        embed.setFooter({ text: 'Warnings are automatically removed when they expire' });
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 });
 
