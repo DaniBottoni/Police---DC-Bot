@@ -450,7 +450,7 @@ client.once('ready', () => {
     // Sets Custom Presence
     client.user.setPresence({
         activities: [{ 
-            name: 'the security cameras',
+            name: 'Monitoring the security cameras',
             type: ActivityType.Watching
         }],
         status: 'online',
