@@ -514,11 +514,7 @@ client.once('ready', () => {
                     .setDescription('Warning level to remove')
                     .setRequired(true)),
         
-        new SlashCommandBuilder()
-            .setName('exportconfig')
-            .setDescription('Download config.json file to upload to GitHub')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        
+     
         new SlashCommandBuilder()
             .setName('accessconfig')
             .setDescription('Configure which role can access moderation commands'),
@@ -891,20 +887,6 @@ client.on('interactionCreate', async interaction => {
                 ephemeral: true
             });
         }
-
-        // Create a buffer from the config file
-        const configContent = fs.readFileSync(configPath, 'utf8');
-        const buffer = Buffer.from(configContent, 'utf8');
-
-        await interaction.reply({
-            content: '📥 Here\'s your `config.json` file!\n\n**Next steps:**\n1. Download this file\n2. Go to your GitHub repo\n3. Upload/replace `config.json`\n4. Commit the changes\n5. Your configs will now persist across restarts! 🎉',
-            files: [{
-                attachment: buffer,
-                name: 'config.json'
-            }],
-            ephemeral: true
-        });
-    }
     
     else if (commandName === 'timeleft') {
         const userId = interaction.user.id;
