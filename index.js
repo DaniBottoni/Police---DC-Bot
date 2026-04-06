@@ -215,11 +215,21 @@ async function showAccessControlConfig(target, guildId) {
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-    await target.reply({
-        embeds: [embed],
-        components: [row],
-        ephemeral: true
-    });
+    // Check if target is an interaction or a user
+    if (target.reply) {
+        // It's an interaction
+        await target.reply({
+            embeds: [embed],
+            components: [row],
+            ephemeral: true
+        });
+    } else {
+        // It's a user object, send as DM
+        await target.send({
+            embeds: [embed],
+            components: [row]
+        });
+    }
 }
 
 // Check if user has permission to use restricted commands
@@ -549,6 +559,8 @@ client.on('guildCreate', async guild => {
             limit: 5
         });
         
+        console.log(`   📋 Fetched ${auditLogs.entries.size} audit log entries`);
+        
         // Find the most recent bot add entry for this bot
         const botAddEntry = auditLogs.entries.find(entry => 
             entry.target?.id === client.user.id &&
@@ -557,36 +569,59 @@ client.on('guildCreate', async guild => {
         
         if (botAddEntry && botAddEntry.executor) {
             const inviter = botAddEntry.executor;
-            console.log(`   Invited by: ${inviter.tag} (${inviter.id})`);
+            console.log(`   👤 Invited by: ${inviter.tag} (${inviter.id})`);
             
             // Send DM to the person who invited the bot
             try {
+                console.log(`   📤 Attempting to send DM to ${inviter.tag}...`);
                 await showAccessControlConfig(inviter, guild.id);
                 console.log(`   ✅ Sent access config DM to ${inviter.tag}`);
             } catch (dmError) {
-                console.log(`   ⚠️ Could not DM ${inviter.tag}, they may have DMs disabled`);
+                console.log(`   ⚠️ Could not DM ${inviter.tag}: ${dmError.message}`);
+                console.log(`   Reason: They may have DMs disabled or blocked the bot`);
                 
                 // Try to send in system channel as fallback
                 if (guild.systemChannel) {
                     try {
+                        console.log(`   📤 Attempting to send in system channel...`);
                         const embed = new EmbedBuilder()
                             .setColor('#5865F2')
                             .setTitle('👋 Thanks for adding Police Bot!')
-                            .setDescription(`${inviter}, please run \`/accessconfig\` to set up command permissions.`)
+                            .setDescription(`<@${inviter.id}>, please run \`/accessconfig\` to set up command permissions.`)
                             .setFooter({ text: 'This bot uses role-based access control for moderation commands' });
                         
                         await guild.systemChannel.send({ embeds: [embed] });
                         console.log(`   ✅ Sent access config reminder in system channel`);
                     } catch (channelError) {
-                        console.log(`   ⚠️ Could not send in system channel either`);
+                        console.log(`   ⚠️ Could not send in system channel: ${channelError.message}`);
                     }
+                } else {
+                    console.log(`   ⚠️ No system channel available for fallback message`);
                 }
             }
         } else {
             console.log(`   ⚠️ Could not determine who invited the bot`);
+            console.log(`   Audit log may not be available yet or bot lacks permission`);
+            
+            // Try to send a generic message in system channel
+            if (guild.systemChannel) {
+                try {
+                    const embed = new EmbedBuilder()
+                        .setColor('#5865F2')
+                        .setTitle('👋 Thanks for adding Police Bot!')
+                        .setDescription('An administrator should run `/accessconfig` to set up command permissions.')
+                        .setFooter({ text: 'This bot uses role-based access control for moderation commands' });
+                    
+                    await guild.systemChannel.send({ embeds: [embed] });
+                    console.log(`   ✅ Sent generic setup reminder in system channel`);
+                } catch (channelError) {
+                    console.log(`   ⚠️ Could not send generic message: ${channelError.message}`);
+                }
+            }
         }
     } catch (error) {
-        console.error(`   ❌ Error in guildCreate handler:`, error.message);
+        console.error(`   ❌ Error in guildCreate handler:`, error);
+        console.error(`   Full error:`, error.stack);
     }
 });
 
