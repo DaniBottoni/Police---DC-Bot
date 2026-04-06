@@ -203,9 +203,9 @@ function saveWarnings() {
 async function showAccessControlConfig(interaction, guildId) {
     const embed = new EmbedBuilder()
         .setColor('#5865F2')
-        .setTitle('🔒 Access Control Configuration')
+        .setTitle('🔒 Access Configuration')
         .setDescription('Select which role should have access to moderation commands:\n\n**Commands affected:**\n• `/warn` - Give warnings to users\n• `/unwarn` - Remove warnings from users\n• `/config` - Configure warning levels\n• `/viewconfig` - View warning configuration\n• `/accessconfig` - Change access control settings\n\n**Note:** Server administrators always have access to all commands.')
-        .setFooter({ text: 'Select a role from the menu below' });
+        .setFooter({ text: 'Select a role from the dropdown below' });
 
     const selectMenu = new RoleSelectMenuBuilder()
         .setCustomId(`access_role_${guildId}`)
@@ -476,20 +476,20 @@ client.once('ready', () => {
     
     // Start keep-alive pings to prevent Render from spinning down
     keepAlive();
-    console.log('🏓 Keep-alive system started (14-minute intervals)');
+    console.log('🏓 Keep-alive system started');
     
     // Register slash commands
     const commands = [
         new SlashCommandBuilder()
             .setName('config')
-            .setDescription('Configure warning levels, roles, and durations')
+            .setDescription('Configure warning levels')
             .addIntegerOption(option =>
                 option.setName('level')
-                    .setDescription('Warning level (1, 2, 3, etc.)')
+                    .setDescription('What level (1, 2, 3, etc.)')
                     .setRequired(true))
             .addRoleOption(option =>
                 option.setName('role')
-                    .setDescription('Role to assign for this warning level')
+                    .setDescription('Which user to give the warning to')
                     .setRequired(true))
             .addStringOption(option =>
                 option.setName('duration')
@@ -548,7 +548,7 @@ client.once('ready', () => {
 
 // Handle bot joining a new server
 client.on('guildCreate', async guild => {
-    console.log(`🎉 Bot joined new server: ${guild.name} (${guild.id})`);
+    console.log(`Bot joined new server: ${guild.name} (${guild.id})`);
     
     // Initialize guild config
     if (!guildConfigs[guild.id]) {
@@ -583,7 +583,7 @@ client.on('guildCreate', async guild => {
         // Send setup message in system channel
         if (guild.systemChannel) {
             try {
-                console.log(`   📤 Sending setup message in system channel...`);
+                console.log(`    Sending setup message in system channel...`);
                 const embed = new EmbedBuilder()
                     .setColor('#5865F2')
                     .setTitle('👋 Thanks for adding Police Bot!')
