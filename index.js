@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, RoleSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ActivityType } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -446,6 +446,20 @@ function keepAlive() {
 
 client.once('ready', () => {
     console.log(`✅ Police bot is online as ${client.user.tag}`);
+    
+    // Sets Custom Presence
+    client.user.setPresence({
+        activities: [{ 
+            name: 'the security cameras',
+            type: ActivityType.Watching
+        }],
+        status: 'online',
+    });
+    // ------------------------------
+
+    // Restore active warnings (your existing code continues here...)
+    console.log(`🔄 Restoring ${Object.keys(activeWarnings).length} active warnings...`);
+    // ... rest of your code
     
     // Restore active warnings
     console.log(`🔄 Restoring ${Object.keys(activeWarnings).length} active warnings...`);
