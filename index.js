@@ -481,22 +481,6 @@ client.once('ready', () => {
     // Register slash commands
     const commands = [
         new SlashCommandBuilder()
-            .setName('config')
-            .setDescription('Configure warning levels')
-            .addIntegerOption(option =>
-                option.setName('level')
-                    .setDescription('What level (1, 2, 3, etc.)')
-                    .setRequired(true))
-            .addRoleOption(option =>
-                option.setName('role')
-                    .setDescription('Which user to give the warning to')
-                    .setRequired(true))
-            .addStringOption(option =>
-                option.setName('duration')
-                    .setDescription('day:hour:min:sec or "forever" for permanent warnings')
-                    .setRequired(true)),
-        
-        new SlashCommandBuilder()
             .setName('warn')
             .setDescription('Give a warning to a user')
             .addUserOption(option =>
@@ -513,10 +497,6 @@ client.once('ready', () => {
                     .setRequired(false)),
         
         new SlashCommandBuilder()
-            .setName('viewconfig')
-            .setDescription('View current warning configuration'),
-        
-        new SlashCommandBuilder()
             .setName('unwarn')
             .setDescription('Manually remove a warning role from a user')
             .addUserOption(option =>
@@ -529,9 +509,24 @@ client.once('ready', () => {
                     .setRequired(true)),
         
         new SlashCommandBuilder()
-            .setName('exportconfig')
-            .setDescription('Download config.json file to upload to GitHub')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+            .setName('config')
+            .setDescription('Configure warning levels')
+            .addIntegerOption(option =>
+                option.setName('level')
+                    .setDescription('What level (1, 2, 3, etc.)')
+                    .setRequired(true))
+            .addRoleOption(option =>
+                option.setName('role')
+                    .setDescription('Which user to give the warning to')
+                    .setRequired(true))
+            .addStringOption(option =>
+                option.setName('duration')
+                    .setDescription('day:hour:min:sec or "forever" for permanent warnings')
+                    .setRequired(true)),
+        
+        new SlashCommandBuilder()
+            .setName('viewconfig')
+            .setDescription('View current warning configuration'),
         
         new SlashCommandBuilder()
             .setName('accessconfig')
@@ -923,27 +918,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    else if (commandName === 'exportconfig') {
-        if (!guildConfigs[guildId] || Object.keys(guildConfigs[guildId].levels).length === 0) {
-            return interaction.reply({
-                content: '❌ No warning levels configured yet. Use /config to set them up first.',
-                ephemeral: true
-            });
-        }
-
-        // Create a buffer from the config file
-        const configContent = fs.readFileSync(configPath, 'utf8');
-        const buffer = Buffer.from(configContent, 'utf8');
-
-        await interaction.reply({
-            content: '📥 Here\'s your `config.json` file!\n\n**Next steps:**\n1. Download this file\n2. Go to your GitHub repo\n3. Upload/replace `config.json`\n4. Commit the changes\n5. Your configs will now persist across restarts! 🎉',
-            files: [{
-                attachment: buffer,
-                name: 'config.json'
-            }],
-            ephemeral: true
-        });
-    }
     
     else if (commandName === 'timeleft') {
         const userId = interaction.user.id;
