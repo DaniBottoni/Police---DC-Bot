@@ -47,5 +47,16 @@
       }
     },
     "accessRoleId": "1487095631733329962"
+  },
+  "1490648060727001168": {
+    "levels": {
+      "2": {
+        "roleId": "1490648060727001169",
+        "roleName": "officers (example)",
+        "durationMs": 86400000,
+        "isForever": false,
+        "durationDisplay": "1d"
+      }
+    }
   }
 }
