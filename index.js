@@ -80,7 +80,7 @@ async function saveConfigToGitHub() {
         const updateData = {
             message: 'Auto-save: Update config.json from Discord bot',
             content: base64Content,
-            branch: 'main' // Change to 'master' if your default branch is master
+            branch: 'main'
         };
         
         if (sha) {
@@ -218,7 +218,7 @@ async function showAccessControlConfig(interaction, guildId) {
     await interaction.reply({
         embeds: [embed],
         components: [row],
-        ephemeral: true
+        flags: [MessageFlags.Ephemeral],
     });
 }
 
@@ -457,9 +457,6 @@ client.once('ready', () => {
     });
     // ------------------------------
 
-    // Restore active warnings (your existing code continues here...)
-    console.log(`🔄 Restoring ${Object.keys(activeWarnings).length} active warnings...`);
-    // ... rest of your code
     
     // Restore active warnings
     console.log(`🔄 Restoring ${Object.keys(activeWarnings).length} active warnings...`);
@@ -674,7 +671,7 @@ client.on('interactionCreate', async interaction => {
         if (!duration) {
             return interaction.reply({
                 content: '❌ Invalid duration format. Use:\n• `5` (5 minutes)\n• `30:0` (30 minutes)\n• `1:30:0` (1 hour 30 minutes)\n• `2:1:30:0` (2 days 1 hour 30 minutes)\n• `forever` (permanent warning)',
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
@@ -715,7 +712,7 @@ client.on('interactionCreate', async interaction => {
         if (!guildConfigs[guildId].levels[level]) {
             return interaction.reply({
                 content: `❌ Warning level ${level} is not configured. Use /config to set it up.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
@@ -725,7 +722,7 @@ client.on('interactionCreate', async interaction => {
         if (!role) {
             return interaction.reply({
                 content: `❌ Configured role not found. Please update the configuration.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
@@ -734,14 +731,14 @@ client.on('interactionCreate', async interaction => {
         if (role.position >= botMember.roles.highest.position) {
             return interaction.reply({
                 content: `❌ I cannot manage the ${role} role. My highest role must be **above** the warning role in the server's role list.\n\n**Fix:** Drag my role higher than ${role} in Server Settings → Roles.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
         if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
             return interaction.reply({
                 content: `❌ I don't have the "Manage Roles" permission. Please enable it in Server Settings → Roles.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
@@ -810,7 +807,7 @@ client.on('interactionCreate', async interaction => {
             console.error(error);
             await interaction.reply({
                 content: `❌ Failed to assign warning. Make sure the bot has proper permissions.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
     }
@@ -821,7 +818,7 @@ client.on('interactionCreate', async interaction => {
         if (!config || Object.keys(config.levels).length === 0) {
             return interaction.reply({
                 content: '📋 No warning levels configured yet. Use /config to set them up.',
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
@@ -851,7 +848,7 @@ client.on('interactionCreate', async interaction => {
         if (!guildConfigs[guildId].levels[level]) {
             return interaction.reply({
                 content: `❌ Warning level ${level} is not configured.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
@@ -861,7 +858,7 @@ client.on('interactionCreate', async interaction => {
         if (!role) {
             return interaction.reply({
                 content: `❌ Configured role not found.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
@@ -869,7 +866,7 @@ client.on('interactionCreate', async interaction => {
         if (!member.roles.cache.has(role.id)) {
             return interaction.reply({
                 content: `❌ ${user} doesn't have the ${role} role.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
 
@@ -913,7 +910,7 @@ client.on('interactionCreate', async interaction => {
             console.error(error);
             await interaction.reply({
                 content: `❌ Failed to remove warning. Make sure the bot has proper permissions.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
     }
@@ -930,7 +927,7 @@ client.on('interactionCreate', async interaction => {
         if (userWarnings.length === 0) {
             return interaction.reply({
                 content: '✅ You have no active warnings!',
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral],
             });
         }
         
