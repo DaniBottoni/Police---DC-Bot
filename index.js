@@ -444,7 +444,7 @@ function keepAlive() {
     setInterval(pingServer, 14 * 60 * 1000);
 }
 
-client.once('clientReady', () => {
+client.once('ready', () => {
     console.log(`✅ Police bot is online as ${client.user.tag}`);
     
     // Sets Custom Presence
