@@ -53,9 +53,9 @@
       "2": {
         "roleId": "1490648060727001169",
         "roleName": "officers (example)",
-        "durationMs": 86400000,
+        "durationMs": 90061000,
         "isForever": false,
-        "durationDisplay": "1d"
+        "durationDisplay": "1d 1h 1m 1s"
       },
       "3": {
         "roleId": "1490648060727001169",
