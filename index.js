@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ActivityType, MessageFlags } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -19,12 +19,26 @@ let activeWarnings = {};
 
 // Load saved configs
 if (fs.existsSync(configPath)) {
-    guildConfigs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    try {
+        guildConfigs = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        console.log('✅ Loaded config.json successfully');
+    } catch (error) {
+        console.error('❌ Failed to load config.json:', error.message);
+        console.log('⚠️ Starting with empty config');
+        guildConfigs = {};
+    }
 }
 
 // Load saved warnings
 if (fs.existsSync(warningsPath)) {
-    activeWarnings = JSON.parse(fs.readFileSync(warningsPath, 'utf8'));
+    try {
+        activeWarnings = JSON.parse(fs.readFileSync(warningsPath, 'utf8'));
+        console.log('✅ Loaded warnings.json successfully');
+    } catch (error) {
+        console.error('❌ Failed to load warnings.json:', error.message);
+        console.log('⚠️ Starting with no active warnings');
+        activeWarnings = {};
+    }
 }
 
 // Save configs to file
@@ -251,7 +265,14 @@ function parseDuration(durationStr) {
         return { days: 0, hours: 0, minutes: 0, seconds: 0, totalMs: null, isForever: true };
     }
     
-    const parts = durationStr.split(':').map(p => parseInt(p.trim()));
+    const parts = durationStr.split(':').map(p => {
+        const num = parseInt(p.trim());
+        // Validate: must be non-negative and reasonable
+        if (num < 0 || num > 9999) {
+            return NaN;
+        }
+        return num;
+    });
     
     if (parts.some(isNaN)) {
         return null; // Invalid input
@@ -282,6 +303,12 @@ function parseDuration(durationStr) {
                    (hours * 60 * 60 * 1000) +
                    (minutes * 60 * 1000) +
                    (seconds * 1000);
+    
+    // Validate: max 1 year duration
+    const MAX_DURATION_MS = 365 * 24 * 60 * 60 * 1000;
+    if (totalMs > MAX_DURATION_MS || totalMs <= 0) {
+        return null;
+    }
     
     return { days, hours, minutes, seconds, totalMs, isForever: false };
 }
@@ -605,7 +632,41 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isRoleSelectMenu()) {
         if (interaction.customId.startsWith('access_role_')) {
             const guildId = interaction.customId.replace('access_role_', '');
+            
+            // Validate guild ID matches current guild (prevent cross-guild attacks)
+            if (guildId !== interaction.guild.id) {
+                console.error('⚠️ Security: Guild ID mismatch in access role selection');
+                return interaction.reply({
+                    content: '❌ Invalid interaction. Please run /accessconfig again.',
+                    flags: [MessageFlags.Ephemeral],
+                });
+            }
+            
             const selectedRole = interaction.roles.first();
+            
+            // Validate role selection
+            if (!selectedRole) {
+                return interaction.reply({
+                    content: '❌ No role selected. Please try again.',
+                    flags: [MessageFlags.Ephemeral],
+                });
+            }
+            
+            // Prevent using @everyone
+            if (selectedRole.id === interaction.guild.id) {
+                return interaction.update({
+                    content: '❌ Cannot use @everyone as access role. Please select a different role.',
+                    components: []
+                });
+            }
+            
+            // Prevent using managed roles (bot roles)
+            if (selectedRole.managed) {
+                return interaction.update({
+                    content: '❌ Cannot use managed roles (bot roles) as access role. Please select a different role.',
+                    components: []
+                });
+            }
             
             // Save the access role to config
             if (!guildConfigs[guildId]) {
@@ -634,6 +695,14 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, guildId } = interaction;
+    
+    // Ensure command is used in a guild (not DMs)
+    if (!interaction.guild) {
+        return interaction.reply({
+            content: '❌ This command can only be used in a server.',
+            flags: [MessageFlags.Ephemeral],
+        });
+    }
 
     // Initialize guild config if doesn't exist
     if (!guildConfigs[guildId]) {
@@ -665,12 +734,20 @@ client.on('interactionCreate', async interaction => {
         const role = interaction.options.getRole('role');
         const durationStr = interaction.options.getString('duration');
         
+        // Validate warning level
+        if (level < 1 || level > 100) {
+            return interaction.reply({
+                content: `❌ Warning level must be between 1 and 100.`,
+                flags: [MessageFlags.Ephemeral],
+            });
+        }
+        
         // Parse duration
         const duration = parseDuration(durationStr);
         
         if (!duration) {
             return interaction.reply({
-                content: '❌ Invalid duration format. Use:\n• `5` (5 minutes)\n• `30:0` (30 minutes)\n• `1:30:0` (1 hour 30 minutes)\n• `2:1:30:0` (2 days 1 hour 30 minutes)\n• `forever` (permanent warning)',
+                content: '❌ Invalid duration format. Use:\n• `5` (5 minutes)\n• `30:0` (30 minutes)\n• `1:30:0` (1 hour 30 minutes)\n• `2:1:30:0` (2 days 1 hour 30 minutes)\n• `forever` (permanent warning)\n\n**Note:** Maximum duration is 365 days.',
                 flags: [MessageFlags.Ephemeral],
             });
         }
@@ -687,6 +764,9 @@ client.on('interactionCreate', async interaction => {
         
         // Auto-save to GitHub (non-blocking)
         saveConfigToGitHub();
+        
+        // Audit log
+        console.log(`🔒 [AUDIT] ${interaction.user.tag} configured warning level ${level} with role ${role.name} in ${interaction.guild.name}`);
 
         const embed = new EmbedBuilder()
             .setColor('#00ff00')
@@ -706,7 +786,28 @@ client.on('interactionCreate', async interaction => {
         const user = interaction.options.getUser('user');
         const member = interaction.guild.members.cache.get(user.id);
         const level = interaction.options.getInteger('level');
-        const reason = interaction.options.getString('reason') || 'No reason provided';
+        
+        // Sanitize reason: limit length and remove control characters
+        let reason = interaction.options.getString('reason') || 'No reason provided';
+        reason = reason
+            .slice(0, 1000) // Max 1000 chars
+            .replace(/[\x00-\x1F\x7F]/g, ''); // Remove control chars
+        
+        // Validate warning level
+        if (level < 1 || level > 100) {
+            return interaction.reply({
+                content: `❌ Warning level must be between 1 and 100.`,
+                flags: [MessageFlags.Ephemeral],
+            });
+        }
+        
+        // Check if user is in the server
+        if (!member) {
+            return interaction.reply({
+                content: `❌ ${user} is not in this server.`,
+                flags: [MessageFlags.Ephemeral],
+            });
+        }
 
         // Check if level is configured
         if (!guildConfigs[guildId].levels[level]) {
@@ -745,6 +846,9 @@ client.on('interactionCreate', async interaction => {
         try {
             // Add role to user
             await member.roles.add(role);
+            
+            // Audit log
+            console.log(`🔒 [AUDIT] ${interaction.user.tag} warned ${user.tag} (Level ${level}) in ${interaction.guild.name} - Reason: ${reason.slice(0, 100)}`);
             
             // Send DM to warned user
             try {
@@ -843,6 +947,22 @@ client.on('interactionCreate', async interaction => {
         const user = interaction.options.getUser('user');
         const member = interaction.guild.members.cache.get(user.id);
         const level = interaction.options.getInteger('level');
+        
+        // Validate warning level
+        if (level < 1 || level > 100) {
+            return interaction.reply({
+                content: `❌ Warning level must be between 1 and 100.`,
+                flags: [MessageFlags.Ephemeral],
+            });
+        }
+        
+        // Check if user is in the server
+        if (!member) {
+            return interaction.reply({
+                content: `❌ ${user} is not in this server.`,
+                flags: [MessageFlags.Ephemeral],
+            });
+        }
 
         // Check if level is configured
         if (!guildConfigs[guildId].levels[level]) {
@@ -873,6 +993,9 @@ client.on('interactionCreate', async interaction => {
         try {
             // Remove role from user
             await member.roles.remove(role);
+            
+            // Audit log
+            console.log(`🔒 [AUDIT] ${interaction.user.tag} unwarned ${user.tag} (Level ${level}) in ${interaction.guild.name}`);
 
             // Remove from active warnings if exists
             const warningKeys = Object.keys(activeWarnings).filter(key => {
@@ -993,8 +1116,14 @@ client.login(process.env.DISCORD_TOKEN);
 // Simple HTTP server to keep Render happy
 const PORT = process.env.PORT || 3000;
 const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Police bot is running!');
+    // Only respond to health check endpoints
+    if (req.url === '/health' || req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('Police bot is running!');
+    } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not found');
+    }
 });
 
 server.listen(PORT, () => {
